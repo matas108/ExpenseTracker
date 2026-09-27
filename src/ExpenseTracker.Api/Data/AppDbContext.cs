@@ -5,7 +5,9 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace ExpenseTracker.Api.Data;
 
-public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbContext<AppUser>(options)
+// The model lives here; each database provider has a subclass so it can keep its own migrations
+// (see ProviderContexts.cs). Code depends on AppDbContext only.
+public abstract class AppDbContext(DbContextOptions options) : IdentityDbContext<AppUser>(options)
 {
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<Category> Categories => Set<Category>();
@@ -50,7 +52,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             e.HasIndex(t => new { t.UserId, t.Date });
             e.HasIndex(t => new { t.UserId, t.ExternalId });
 
-            // Avoid multiple cascade paths from User (SQL Server rejects them).
+            // Avoid multiple cascade paths from User (SQL Server rejects them): User -> Categories -> Transactions
+            // (set null) already exists, so the direct User -> Transactions link must not cascade.
+            e.HasOne(t => t.User).WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(t => t.Account).WithMany().HasForeignKey(t => t.AccountId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(t => t.Category).WithMany().HasForeignKey(t => t.CategoryId).OnDelete(DeleteBehavior.SetNull);
         });

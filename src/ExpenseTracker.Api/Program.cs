@@ -12,8 +12,21 @@ using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDbContext<AppDbContext>(o =>
-    o.UseSqlite(builder.Configuration.GetConnectionString("Default")));
+var connectionString = builder.Configuration.GetConnectionString("Default");
+var provider = builder.Configuration["Database:Provider"] ?? DatabaseProvider.Sqlite;
+switch (provider)
+{
+    case DatabaseProvider.Sqlite:
+        builder.Services.AddDbContext<AppDbContext, SqliteAppDbContext>(o => o.UseSqlite(connectionString));
+        break;
+    case DatabaseProvider.SqlServer:
+        // Retries cover transient faults, including Azure SQL serverless waking from auto-pause.
+        builder.Services.AddDbContext<AppDbContext, SqlServerAppDbContext>(o =>
+            o.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure()));
+        break;
+    default:
+        throw new InvalidOperationException($"Unknown Database:Provider '{provider}'. Use Sqlite or SqlServer.");
+}
 
 // Auth: Identity for user storage + password hashing, JWT bearer for the API.
 var jwt = builder.Configuration.GetSection(JwtOptions.Section).Get<JwtOptions>() ?? new JwtOptions();
@@ -77,5 +90,6 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapGet("/", () => Results.Redirect("/swagger")).ExcludeFromDescription();
 
 app.Run();
