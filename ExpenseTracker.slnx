@@ -2,4 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/ExpenseTracker.Api/ExpenseTracker.Api.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ExpenseTracker.Api.Tests/ExpenseTracker.Api.Tests.csproj" />
+  </Folder>
 </Solution>

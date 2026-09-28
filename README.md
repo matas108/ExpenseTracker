@@ -44,6 +44,17 @@ Then open http://localhost:5100/swagger.
 5. `POST /api/transactions/import`: upload [`samples/transactions.csv`](samples/transactions.csv) with `accountId` = 1.
 6. `GET /api/transactions` and `GET /api/summary`.
 
+## Tests
+
+```bash
+dotnet test
+```
+
+68 xUnit tests in `tests/ExpenseTracker.Api.Tests`:
+
+- **Integration tests** start the real API in memory with `WebApplicationFactory`, with a throwaway SQLite database per test class. They cover auth and lockout, per-user data isolation, CRUD rules (409s, validation, uncategorising on delete), filtering and paging, CSV import (dedup, European formats, per-row errors) and summary totals checked against hand-calculated values.
+- **Unit tests** cover the CSV amount parser.
+
 ## CSV import format
 
 | Column | Required | Notes |

@@ -26,4 +26,8 @@
     <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="ExpenseTracker.Api.Tests" />
+  </ItemGroup>
+
 </Project>
