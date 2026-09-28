@@ -28,7 +28,7 @@ Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download). Nothing else:
 SQLite and creates `expensetracker.db` on first start.
 
 ```bash
-git clone <this repo>
+git clone https://github.com/matas108/ExpenseTracker.git
 cd ExpenseTracker
 dotnet run --project src/ExpenseTracker.Api
 ```
