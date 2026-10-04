@@ -36,7 +36,8 @@ public class SummaryController(AppDbContext db) : ControllerBase
             query = query.Where(t => t.Account.Currency == currency);
         }
 
-        // Aggregated in memory: SQLite can't SUM decimals, and a personal ledger is small.
+        // Aggregated in memory: one query feeds all three breakdowns, and a personal ledger is small.
+        // EF Core can also translate these sums to SQL on both providers (via ef_sum on SQLite) if this needs to scale.
         var rows = await query
             .Select(t => new Row(t.Amount, t.Date, t.CategoryId,
                 t.Category != null ? t.Category.Name : null,

@@ -1,3 +1,5 @@
+![CI](https://github.com/matas108/ExpenseTracker/actions/workflows/ci.yml/badge.svg)
+
 # Expense Tracker API
 
 A small personal-finance REST API: accounts, categories and transactions, CSV import from bank
@@ -114,7 +116,7 @@ It creates:
 
 ## Design notes
 
-- **Summaries are calculated in the app, not the database.** SQLite can't `SUM` decimals exactly, and a personal ledger is small. This keeps the totals exact and the code identical on both providers.
+- **Summaries are calculated in the app, not the database.** One query fetches the few columns needed and C# builds all three breakdowns from it, which is simple and fast at personal-ledger sizes. EF Core can translate the same sums to SQL on both providers (on SQLite through its own exact `ef_sum` function) if this ever needs to scale.
 - **Currencies are never mixed.** Multi-currency conversion is out of scope, so `/api/summary` covers one currency. If your transactions span several, it asks you to pick one with `?currency=`.
 - **Deletes:**
   - Deleting an account that still has transactions returns `409`.
