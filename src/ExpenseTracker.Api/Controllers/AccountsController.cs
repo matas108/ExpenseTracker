@@ -32,6 +32,21 @@ public class AccountsController(AppDbContext db) : ControllerBase
         return account is null ? NotFound() : AccountDto.From(account);
     }
 
+    [HttpGet("{id:int}/balance")]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<AccountBalanceDto>> GetBalance(int id)
+    {
+        var account = await Find(id);
+        if (account is null) return NotFound();
+
+        var transactionsTotal = await db.Transactions
+            .Where(t => t.AccountId == id)
+            .SumAsync(t => t.Amount);
+
+        return new AccountBalanceDto(account.Id, account.Currency, account.OpeningBalance,
+            transactionsTotal, account.OpeningBalance + transactionsTotal);
+    }
+
     [HttpPost]
     [ProducesResponseType<AccountDto>(StatusCodes.Status201Created)]
     public async Task<ActionResult<AccountDto>> Create(AccountRequest request)

@@ -15,6 +15,14 @@ public record AccountDto(
         new(a.Id, a.Name, a.Type, a.Currency, a.OpeningBalance, a.CreatedAt);
 }
 
+// Balance = OpeningBalance + the sum of the account's transactions (expenses are negative).
+public record AccountBalanceDto(
+    int AccountId,
+    string Currency,
+    decimal OpeningBalance,
+    decimal TransactionsTotal,
+    decimal Balance);
+
 // Used for both POST and PUT.
 public record AccountRequest(
     [Required, StringLength(100, MinimumLength = 1)] string Name,
