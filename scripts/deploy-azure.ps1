@@ -184,7 +184,20 @@ try {
 finally { $archive.Dispose() }
 
 Step "Deploying"
-Invoke-Az webapp deploy -g $ResourceGroup -n $AppName --src-path $zip --type zip --clean true -o none
+$ErrorActionPreference = "Continue"
+& az webapp deploy -g $ResourceGroup -n $AppName --src-path $zip --type zip --clean true -o none
+$deployExit = $LASTEXITCODE
+$ErrorActionPreference = "Stop"
+if ($deployExit -ne 0) {
+    # On Linux, the deployment service (Kudu) restarts together with the app at the end of a deploy,
+    # so the CLI's status polling can get a 502 even though the deployment finished. The server's
+    # own deployment log is the source of truth.
+    $lastLogLine = Invoke-Az webapp log deployment show -g $ResourceGroup -n $AppName --query "[-1].message" -o tsv
+    if ($lastLogLine -notmatch "Deployment successful") {
+        throw "Deployment failed. Last deployment log line: $lastLogLine"
+    }
+    Write-Host "The CLI lost contact while the app restarted, but the deployment log reports success." -ForegroundColor Yellow
+}
 
 $url = "https://$AppName.azurewebsites.net"
 Write-Host "`nDeployed: $url  (Swagger: $url/swagger)" -ForegroundColor Green

@@ -12,8 +12,9 @@ exports, and income/expense summaries. Built with ASP.NET Core and EF Core.
 
 ## Features
 
-- **Auth:** register / login with ASP.NET Core Identity, JWT bearer tokens, lockout after 5 failed logins
+- **Auth:** register / login with ASP.NET Core Identity, JWT bearer tokens, lockout after 5 failed logins, and a rate limit of 10 login/register requests per minute per IP (`429` beyond that)
 - **Accounts, categories, transactions:** full CRUD, every query scoped to the signed-in user
+- **Account balance:** opening balance plus the sum of the account's transactions
 - **Transaction list:** filter by account, category and date range, with paging
 - **CSV import:** partial imports with a per-row error report and duplicate detection, so re-importing the same file is safe
 - **Summary:** total income, expense and net for a date range, broken down by category and by month
@@ -44,7 +45,7 @@ Then open http://localhost:5100/swagger.
 3. `POST /api/accounts`: `{ "name": "Checking", "type": "Bank", "currency": "EUR" }`
 4. `POST /api/categories` for `Salary` (Income), `Rent` and `Groceries` (Expense).
 5. `POST /api/transactions/import`: upload [`samples/transactions.csv`](samples/transactions.csv) with `accountId` = 1.
-6. `GET /api/transactions` and `GET /api/summary`.
+6. `GET /api/transactions`, `GET /api/accounts/1/balance` and `GET /api/summary`.
 
 ## Tests
 
@@ -52,9 +53,9 @@ Then open http://localhost:5100/swagger.
 dotnet test
 ```
 
-68 xUnit tests in `tests/ExpenseTracker.Api.Tests`:
+72 xUnit tests in `tests/ExpenseTracker.Api.Tests`, run by GitHub Actions on every push to `main` and every pull request:
 
-- **Integration tests** start the real API in memory with `WebApplicationFactory`, with a throwaway SQLite database per test class. They cover auth and lockout, per-user data isolation, CRUD rules (409s, validation, uncategorising on delete), filtering and paging, CSV import (dedup, European formats, per-row errors) and summary totals checked against hand-calculated values.
+- **Integration tests** start the real API in memory with `WebApplicationFactory`, with a throwaway SQLite database per test class. They cover auth, lockout and rate limiting, per-user data isolation, CRUD rules (409s, validation, uncategorising on delete), account balances, filtering and paging, CSV import (dedup, European formats, per-row errors) and summary totals checked against hand-calculated values.
 - **Unit tests** cover the CSV amount parser.
 
 ## CSV import format
@@ -80,6 +81,8 @@ dotnet test
 | `ConnectionStrings__Default` | `Data Source=expensetracker.db` | Database connection |
 | `Jwt__Key` | dev-only key in `appsettings.Development.json` | **Required** outside Development, at least 32 bytes. The app refuses to start without it. |
 | `Jwt__ExpiryMinutes` | `60` | Token lifetime |
+| `RateLimiting__AuthPermitLimit` | `10` | Login/register requests allowed per client IP per minute |
+| `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | not set | Set to `true` behind a reverse proxy (the deploy script does this on Azure) so the rate limiter sees each client's real IP |
 
 ## Database migrations
 
@@ -101,11 +104,13 @@ Migrations are applied automatically on startup.
 ## Deployment (Azure)
 
 [`scripts/deploy-azure.ps1`](scripts/deploy-azure.ps1) provisions everything on the first run and
-redeploys on later runs. It needs the Azure CLI, run `az login` first:
+redeploys on later runs. It needs the Azure CLI; run `az login` first:
 
 ```powershell
-./scripts/deploy-azure.ps1
+powershell -ExecutionPolicy Bypass -File scripts/deploy-azure.ps1
 ```
+
+`-ExecutionPolicy Bypass` lets this one run go ahead on machines that block unsigned scripts, without changing any system setting.
 
 It creates:
 
@@ -113,10 +118,12 @@ It creates:
 - **Azure SQL Database:** free serverless offer. If the monthly free allowance runs out it pauses rather than billing.
 - **Passwordless database access:** the web app connects with its system-assigned managed identity, and the SQL server accepts Microsoft Entra authentication only, so no database password exists anywhere.
 - **JWT signing key:** generated once, stored as an app setting and never printed.
+- **Forwarded headers:** enabled, because App Service sits behind a proxy. Without it the app would see the proxy's address instead of each client's, and the rate limiter would treat all visitors as one.
 
 ## Design notes
 
-- **Summaries are calculated in the app, not the database.** One query fetches the few columns needed and C# builds all three breakdowns from it, which is simple and fast at personal-ledger sizes. EF Core can translate the same sums to SQL on both providers (on SQLite through its own exact `ef_sum` function) if this ever needs to scale.
+- **Summaries are aggregated in the database.** `GroupBy` and `Sum` are translated to SQL on both providers (on SQLite through EF Core's exact `ef_sum` and `ef_compare` functions), so the database returns one row per currency, category and month instead of every transaction. That's three small queries instead of one large one.
+- **Rate limiting uses a fixed one-minute window per client IP.** It's simple and predictable. A sliding window or token bucket would smooth out bursts at the window boundary.
 - **Currencies are never mixed.** Multi-currency conversion is out of scope, so `/api/summary` covers one currency. If your transactions span several, it asks you to pick one with `?currency=`.
 - **Deletes:**
   - Deleting an account that still has transactions returns `409`.
