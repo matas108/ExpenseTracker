@@ -151,7 +151,9 @@ Invoke-Az webapp config connection-string set -g $ResourceGroup -n $AppName --co
     --settings "Default=$connectionString" -o none
 
 $existingKey = Invoke-Az webapp config appsettings list -g $ResourceGroup -n $AppName --query "[?name=='Jwt__Key'].value | [0]" -o tsv
-$settings = @("Database__Provider=SqlServer")
+# ForwardedHeaders: App Service sits behind a proxy; this makes the app see the client's real IP
+# (from X-Forwarded-For), which the rate limiter partitions on.
+$settings = @("Database__Provider=SqlServer", "ASPNETCORE_FORWARDEDHEADERS_ENABLED=true")
 if (-not $existingKey) {
     # Generated once and kept on re-runs so issued tokens stay valid. Never printed.
     $bytes = New-Object byte[] 48

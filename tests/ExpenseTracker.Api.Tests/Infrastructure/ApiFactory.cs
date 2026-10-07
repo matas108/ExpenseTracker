@@ -15,6 +15,8 @@ public class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Database:Provider", "Sqlite");
         builder.UseSetting("ConnectionStrings:Default", $"Data Source={DbPath}");
         builder.UseSetting("Logging:LogLevel:Default", "Warning");
+        // Tests register many users per class; RateLimitingTests lowers this again.
+        builder.UseSetting("RateLimiting:AuthPermitLimit", "1000");
     }
 
     protected override void Dispose(bool disposing)

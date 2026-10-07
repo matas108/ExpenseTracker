@@ -3,11 +3,13 @@ using ExpenseTracker.Api.Dtos;
 using ExpenseTracker.Api.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace ExpenseTracker.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
+[EnableRateLimiting("auth")]
 public class AuthController(
     UserManager<AppUser> users,
     SignInManager<AppUser> signIn,
