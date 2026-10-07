@@ -13,8 +13,6 @@ namespace ExpenseTracker.Api.Controllers;
 [Route("api/summary")]
 public class SummaryController(AppDbContext db) : ControllerBase
 {
-    private record Row(decimal Amount, DateOnly Date, int? CategoryId, string? CategoryName, CategoryKind? CategoryKind, string Currency);
-
     /// <summary>Totals for a date range (inclusive). Amounts in different currencies are never added together.</summary>
     [HttpGet]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
@@ -36,16 +34,12 @@ public class SummaryController(AppDbContext db) : ControllerBase
             query = query.Where(t => t.Account.Currency == currency);
         }
 
-        // Aggregated in memory: one query feeds all three breakdowns, and a personal ledger is small.
-        // EF Core can also translate these sums to SQL on both providers (via ef_sum on SQLite) if this needs to scale.
-        var rows = await query
-            .Select(t => new Row(t.Amount, t.Date, t.CategoryId,
-                t.Category != null ? t.Category.Name : null,
-                t.Category != null ? t.Category.Kind : null,
-                t.Account.Currency))
+        // The database groups and sums; only one row per currency, category or month comes back.
+        var currencies = await query
+            .Select(t => t.Account.Currency)
+            .Distinct()
+            .OrderBy(c => c)
             .ToListAsync();
-
-        var currencies = rows.Select(r => r.Currency).Distinct().Order().ToList();
         if (currencies.Count > 1)
         {
             ModelState.AddModelError(nameof(currency),
@@ -53,28 +47,39 @@ public class SummaryController(AppDbContext db) : ControllerBase
             return ValidationProblem(ModelState);
         }
 
-        var income = rows.Where(r => r.Amount > 0).Sum(r => r.Amount);
-        var expense = -rows.Where(r => r.Amount < 0).Sum(r => r.Amount);
-
-        var byCategory = rows
-            .GroupBy(r => (r.CategoryId, r.CategoryName, r.CategoryKind))
-            .Select(g => new CategorySummaryDto(g.Key.CategoryId, g.Key.CategoryName, g.Key.CategoryKind,
-                g.Sum(r => r.Amount), g.Count()))
+        var byCategory = (await query
+            .GroupBy(t => new
+            {
+                t.CategoryId,
+                Name = t.Category != null ? t.Category.Name : null,
+                Kind = t.Category != null ? (CategoryKind?)t.Category.Kind : null,
+            })
+            .Select(g => new CategorySummaryDto(g.Key.CategoryId, g.Key.Name, g.Key.Kind,
+                g.Sum(t => t.Amount), g.Count()))
+            .ToListAsync())
             .OrderByDescending(c => Math.Abs(c.Total))
             .ToList();
 
-        var byMonth = rows
-            .GroupBy(r => r.Date.ToString("yyyy-MM"))
-            .OrderBy(g => g.Key)
-            .Select(g =>
+        var byMonth = (await query
+            .GroupBy(t => new { t.Date.Year, t.Date.Month })
+            .Select(g => new
             {
-                var monthIncome = g.Where(r => r.Amount > 0).Sum(r => r.Amount);
-                var monthExpense = -g.Where(r => r.Amount < 0).Sum(r => r.Amount);
-                return new MonthSummaryDto(g.Key, monthIncome, monthExpense, monthIncome - monthExpense);
+                g.Key.Year,
+                g.Key.Month,
+                Income = g.Sum(t => t.Amount > 0 ? t.Amount : 0m),
+                Spent = g.Sum(t => t.Amount < 0 ? t.Amount : 0m), // negative
             })
+            .ToListAsync())
+            .OrderBy(m => m.Year).ThenBy(m => m.Month)
+            .Select(m => new MonthSummaryDto($"{m.Year:D4}-{m.Month:D2}", m.Income, -m.Spent, m.Income + m.Spent))
             .ToList();
 
-        return new SummaryDto(from, to, currency ?? currencies.SingleOrDefault(), rows.Count,
+        var income = byMonth.Sum(m => m.Income);
+        var expense = byMonth.Sum(m => m.Expense);
+        var transactionCount = byCategory.Sum(c => c.Count);
+
+        return new SummaryDto(from, to, currency ?? currencies.SingleOrDefault(), transactionCount,
             income, expense, income - expense, byCategory, byMonth);
+
     }
 }
